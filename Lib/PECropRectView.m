@@ -1,351 +1,271 @@
 //
-//  PECropRectView.m
+//  PECropViewController.m
 //  PhotoCropEditor
 //
-//  Created by kishikawa katsumi on 2013/05/21.
+//  Created by kishikawa katsumi on 2013/05/19.
 //  Copyright (c) 2013 kishikawa katsumi. All rights reserved.
 //
 
-#import "PECropRectView.h"
-#import "PEResizeControl.h"
+#import "PECropViewController.h"
+#import "PECropView.h"
 
-@interface PECropRectView ()<PEResizeControlViewDelegate>
+@interface PECropViewController () <UIActionSheetDelegate>
 
-@property (nonatomic) PEResizeControl *topLeftCornerView;
-@property (nonatomic) PEResizeControl *topRightCornerView;
-@property (nonatomic) PEResizeControl *bottomLeftCornerView;
-@property (nonatomic) PEResizeControl *bottomRightCornerView;
-@property (nonatomic) PEResizeControl *topEdgeView;
-@property (nonatomic) PEResizeControl *leftEdgeView;
-@property (nonatomic) PEResizeControl *bottomEdgeView;
-@property (nonatomic) PEResizeControl *rightEdgeView;
-
-@property (nonatomic) CGRect initialRect;
-@property (nonatomic) CGFloat fixedAspectRatio;
+@property (nonatomic) PECropView *cropView;
+@property (nonatomic) UIActionSheet *actionSheet;
 
 @end
 
-@implementation PECropRectView
+@implementation PECropViewController
 
-- (id)initWithFrame:(CGRect)frame
++ (NSBundle *)bundle
 {
-    self = [super initWithFrame:frame];
-    if (self) {
-        self.backgroundColor = [UIColor clearColor];
-        self.contentMode = UIViewContentModeRedraw;
-        
-        self.showsGridMajor = YES;
-        self.showsGridMinor = NO;
-        
-        UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectInset(self.bounds, -2.0f, -2.0f)];
-        imageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        imageView.image = [[UIImage imageNamed:@"PEPhotoCropEditor.bundle/PEPhotoCropEditorBorder"] resizableImageWithCapInsets:UIEdgeInsetsMake(23.0f, 23.0f, 23.0f, 23.0f)];
-        [self addSubview:imageView];
-        
-        self.topLeftCornerView = [[PEResizeControl alloc] init];
-        self.topLeftCornerView.delegate = self;
-        [self addSubview:self.topLeftCornerView];
-        
-        self.topRightCornerView = [[PEResizeControl alloc] init];
-        self.topRightCornerView.delegate = self;
-        [self addSubview:self.topRightCornerView];
-        
-        self.bottomLeftCornerView = [[PEResizeControl alloc] init];
-        self.bottomLeftCornerView.delegate = self;
-        [self addSubview:self.bottomLeftCornerView];
-        
-        self.bottomRightCornerView = [[PEResizeControl alloc] init];
-        self.bottomRightCornerView.delegate = self;
-        [self addSubview:self.bottomRightCornerView];
-        
-        self.topEdgeView = [[PEResizeControl alloc] init];
-        self.topEdgeView.delegate = self;
-        [self addSubview:self.topEdgeView];
-        
-        self.leftEdgeView = [[PEResizeControl alloc] init];
-        self.leftEdgeView.delegate = self;
-        [self addSubview:self.leftEdgeView];
-        
-        self.bottomEdgeView = [[PEResizeControl alloc] init];
-        self.bottomEdgeView.delegate = self;
-        [self addSubview:self.bottomEdgeView];
-        
-        self.rightEdgeView = [[PEResizeControl alloc] init];
-        self.rightEdgeView.delegate = self;
-        [self addSubview:self.rightEdgeView];
-    }
+    static NSBundle *bundle = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSURL *bundleURL = [[NSBundle mainBundle] URLForResource:@"PEPhotoCropEditor" withExtension:@"bundle"];
+        bundle = [[NSBundle alloc] initWithURL:bundleURL];
+    });
     
-    return self;
+    return bundle;
+}
+
+static inline NSString *PELocalizedString(NSString *key, NSString *comment)
+{
+    return [[PECropViewController bundle] localizedStringForKey:key value:nil table:@"Localizable"];
 }
 
 #pragma mark -
 
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+- (void)loadView
 {
-    NSArray *subviews = self.subviews;
-    for (UIView *subview in subviews) {
-        if ([subview isKindOfClass:[PEResizeControl class]]) {
-            if (CGRectContainsPoint(subview.frame, point)) {
-                return subview;
-            }
-        }
-    }
+    UIView *contentView = [[UIView alloc] init];
+    contentView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    contentView.backgroundColor = [UIColor blackColor];
+    self.view = contentView;
     
-    return nil;
+    self.cropView = [[PECropView alloc] initWithFrame:contentView.bounds];
+    [contentView addSubview:self.cropView];
 }
 
-- (void)drawRect:(CGRect)rect
+- (void)viewDidLoad
 {
-    [super drawRect:rect];
+    [super viewDidLoad];
     
-    CGFloat width = CGRectGetWidth(self.bounds);
-    CGFloat height = CGRectGetHeight(self.bounds);
+    self.navigationController.navigationBar.translucent = NO;
+    self.navigationController.toolbar.translucent = NO;
+    self.navigationController.navigationBar.tintColor = [UIColor orangeColor];
+    self.navigationController.navigationBar.barTintColor = [UIColor blackColor];
     
-    for (NSInteger i = 0; i < 3; i++) {
-        CGFloat borderPadding = 2.0f;
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
+                                                                                          target:self
+                                                                                          action:@selector(cancel:)];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                                                           target:self
+                                                                                           action:@selector(done:)];
+    
+    if (!self.toolbarItems) {
+        UIBarButtonItem *flexibleSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+                                                                                       target:nil
+                                                                                       action:nil];
+        UIBarButtonItem *landscape = [[UIBarButtonItem alloc] initWithTitle:@"Landscape"
+                                                                      style:UIBarButtonItemStyleBordered
+                                                                     target:self
+                                                                     action:@selector(landscapeMode)];
         
-        if (self.showsGridMinor) {
-            for (NSInteger j = 1; j < 3; j++) {
-                [[UIColor colorWithRed:1.0f green:1.0f blue:0.0f alpha:0.3f] set];
-                
-                UIRectFill(CGRectMake(roundf(width / 3 / 3 * j + width / 3 * i), borderPadding, 1.0f, roundf(height) - borderPadding * 2));
-                UIRectFill(CGRectMake(borderPadding, roundf(height / 3 / 3 * j + height / 3 * i), roundf(width) - borderPadding * 2, 1.0f));
-            }
-        }
+        UIBarButtonItem *original = [[UIBarButtonItem alloc] initWithTitle:@"Original"
+                                                                     style:UIBarButtonItemStyleBordered
+                                                                    target:self
+                                                                    action:@selector(originalMode)];
         
-        if (self.showsGridMajor) {
-            if (i > 0) {
-                [[UIColor whiteColor] set];
-                
-                UIRectFill(CGRectMake(roundf(width / 3 * i), borderPadding, 1.0f, roundf(height) - borderPadding * 2));
-                UIRectFill(CGRectMake(borderPadding, roundf(height / 3 * i), roundf(width) - borderPadding * 2, 1.0f));
-            }
-        }
+        UIBarButtonItem *portrait = [[UIBarButtonItem alloc] initWithTitle:@"Portrait"
+                                                                     style:UIBarButtonItemStyleBordered
+                                                                    target:self
+                                                                    action:@selector(portraitMode)];
+        portrait.tintColor = [UIColor orangeColor];
+        original.tintColor = [UIColor orangeColor];
+        landscape.tintColor = [UIColor orangeColor];
+        
+        
+        self.toolbarItems = @[landscape, flexibleSpace,original, flexibleSpace,portrait];
+        
+        
     }
+    self.navigationController.toolbarHidden = self.toolbarHidden;
+    
+    self.cropView.image = self.image;
+    
 }
 
-- (void)layoutSubviews
+- (void)viewDidAppear:(BOOL)animated
 {
-    [super layoutSubviews];
+    [super viewDidAppear:animated];
     
-    self.topLeftCornerView.frame = (CGRect){CGRectGetWidth(self.topLeftCornerView.bounds) / -2, CGRectGetHeight(self.topLeftCornerView.bounds) / -2, self.topLeftCornerView.bounds.size};
-    self.topRightCornerView.frame = (CGRect){CGRectGetWidth(self.bounds) - CGRectGetWidth(self.topRightCornerView.bounds) / 2, CGRectGetHeight(self.topRightCornerView.bounds) / -2, self.topLeftCornerView.bounds.size};
-    self.bottomLeftCornerView.frame = (CGRect){CGRectGetWidth(self.bottomLeftCornerView.bounds) / -2, CGRectGetHeight(self.bounds) - CGRectGetHeight(self.bottomLeftCornerView.bounds) / 2, self.bottomLeftCornerView.bounds.size};
-    self.bottomRightCornerView.frame = (CGRect){CGRectGetWidth(self.bounds) - CGRectGetWidth(self.bottomRightCornerView.bounds) / 2, CGRectGetHeight(self.bounds) - CGRectGetHeight(self.bottomRightCornerView.bounds) / 2, self.bottomRightCornerView.bounds.size};
-    self.topEdgeView.frame = (CGRect){CGRectGetMaxX(self.topLeftCornerView.frame), CGRectGetHeight(self.topEdgeView.frame) / -2, CGRectGetMinX(self.topRightCornerView.frame) - CGRectGetMaxX(self.topLeftCornerView.frame), CGRectGetHeight(self.topEdgeView.bounds)};
-    self.leftEdgeView.frame = (CGRect){CGRectGetWidth(self.leftEdgeView.frame) / -2, CGRectGetMaxY(self.topLeftCornerView.frame), CGRectGetWidth(self.leftEdgeView.bounds), CGRectGetMinY(self.bottomLeftCornerView.frame) - CGRectGetMaxY(self.topLeftCornerView.frame)};
-    self.bottomEdgeView.frame = (CGRect){CGRectGetMaxX(self.bottomLeftCornerView.frame), CGRectGetMinY(self.bottomLeftCornerView.frame), CGRectGetMinX(self.bottomRightCornerView.frame) - CGRectGetMaxX(self.bottomLeftCornerView.frame), CGRectGetHeight(self.bottomEdgeView.bounds)};
-    self.rightEdgeView.frame = (CGRect){CGRectGetWidth(self.bounds) - CGRectGetWidth(self.rightEdgeView.bounds) / 2, CGRectGetMaxY(self.topRightCornerView.frame), CGRectGetWidth(self.rightEdgeView.bounds), CGRectGetMinY(self.bottomRightCornerView.frame) - CGRectGetMaxY(self.topRightCornerView.frame)};
+    if (self.cropAspectRatio != 0) {
+        self.cropAspectRatio = self.cropAspectRatio;
+    }
+    if (!CGRectEqualToRect(self.cropRect, CGRectZero)) {
+        self.cropRect = self.cropRect;
+    }
+    if (!CGRectEqualToRect(self.imageCropRect, CGRectZero)) {
+        self.imageCropRect = self.imageCropRect;
+    }
+    
+    self.keepingCropAspectRatio = self.keepingCropAspectRatio;
+    [self landscapeMode];
+}
+
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
+{
+    return YES;
 }
 
 #pragma mark -
 
-- (void)setShowsGridMajor:(BOOL)showsGridMajor
+- (void)setImage:(UIImage *)image
 {
-    _showsGridMajor = showsGridMajor;
-    [self setNeedsDisplay];
+    _image = image;
+    self.cropView.image = image;
 }
 
-- (void)setShowsGridMinor:(BOOL)showsGridMinor
+- (void)setKeepingCropAspectRatio:(BOOL)keepingCropAspectRatio
 {
-    _showsGridMinor = showsGridMinor;
-    [self setNeedsDisplay];
+    _keepingCropAspectRatio = keepingCropAspectRatio;
+    self.cropView.keepingCropAspectRatio = self.keepingCropAspectRatio;
 }
 
-- (void)setKeepingAspectRatio:(BOOL)keepingAspectRatio
+- (void)setCropAspectRatio:(CGFloat)cropAspectRatio
 {
-    _keepingAspectRatio = keepingAspectRatio;
+    _cropAspectRatio = cropAspectRatio;
+    self.cropView.cropAspectRatio = self.cropAspectRatio;
+}
+
+- (void)setCropRect:(CGRect)cropRect
+{
+    _cropRect = cropRect;
+    _imageCropRect = CGRectZero;
     
-    if (self.keepingAspectRatio) {
-        CGFloat width = CGRectGetWidth(self.bounds);
-        CGFloat height = CGRectGetHeight(self.bounds);
-        self.fixedAspectRatio = fminf(width / height, height / width);
-    }
+    CGRect cropViewCropRect = self.cropView.cropRect;
+    cropViewCropRect.origin.x += cropRect.origin.x;
+    cropViewCropRect.origin.y += cropRect.origin.y;
+    
+    CGSize size = CGSizeMake(fminf(CGRectGetMaxX(cropViewCropRect) - CGRectGetMinX(cropViewCropRect), CGRectGetWidth(cropRect)),
+                             fminf(CGRectGetMaxY(cropViewCropRect) - CGRectGetMinY(cropViewCropRect), CGRectGetHeight(cropRect)));
+    cropViewCropRect.size = size;
+    self.cropView.cropRect = cropViewCropRect;
+}
+
+- (void)setImageCropRect:(CGRect)imageCropRect
+{
+    _imageCropRect = imageCropRect;
+    _cropRect = CGRectZero;
+    
+    self.cropView.imageCropRect = imageCropRect;
+}
+
+- (void)resetCropRect
+{
+    [self.cropView resetCropRect];
+}
+
+- (void)resetCropRectAnimated:(BOOL)animated
+{
+    [self.cropView resetCropRectAnimated:animated];
 }
 
 #pragma mark -
 
-- (void)resizeControlViewDidBeginResizing:(PEResizeControl *)resizeControlView
+- (void)cancel:(id)sender
 {
-    self.initialRect = self.frame;
-    
-    if ([self.delegate respondsToSelector:@selector(cropRectViewDidBeginEditing:)]) {
-        [self.delegate cropRectViewDidBeginEditing:self];
+    if ([self.delegate respondsToSelector:@selector(cropViewControllerDidCancel:)]) {
+        [self.delegate cropViewControllerDidCancel:self];
     }
 }
 
-- (void)resizeControlViewDidResize:(PEResizeControl *)resizeControlView
+- (void)done:(id)sender
 {
-    self.frame = [self cropRectMakeWithResizeControlView:resizeControlView];
-        
-    if ([self.delegate respondsToSelector:@selector(cropRectViewEditingChanged:)]) {
-        [self.delegate cropRectViewEditingChanged:self];
+    if ([self.delegate respondsToSelector:@selector(cropViewController:didFinishCroppingImage:)]) {
+        [self.delegate cropViewController:self didFinishCroppingImage:self.cropView.croppedImage];
     }
 }
 
-- (void)resizeControlViewDidEndResizing:(PEResizeControl *)resizeControlView
+- (void)constrain:(id)sender
 {
-    if ([self.delegate respondsToSelector:@selector(cropRectViewDidEndEditing:)]) {
-        [self.delegate cropRectViewDidEndEditing:self];
-    }
+    self.actionSheet = [[UIActionSheet alloc] initWithTitle:nil
+                                                   delegate:self
+                                          cancelButtonTitle:PELocalizedString(@"Cancel", nil)
+                                     destructiveButtonTitle:nil
+                                          otherButtonTitles:
+                        PELocalizedString(@"Original", nil),
+                        PELocalizedString(@"Square", nil),
+                        PELocalizedString(@"3 x 2", nil),
+                        PELocalizedString(@"3 x 5", nil),
+                        PELocalizedString(@"4 x 3", nil),
+                        PELocalizedString(@"4 x 6", nil),
+                        PELocalizedString(@"5 x 7", nil),
+                        PELocalizedString(@"8 x 10", nil),
+                        PELocalizedString(@"16 x 9", nil), nil];
+    [self.actionSheet showFromToolbar:self.navigationController.toolbar];
 }
 
-- (CGRect)cropRectMakeWithResizeControlView:(PEResizeControl *)resizeControlView
-{
-    CGRect rect = self.frame;
-    
-    if (resizeControlView == self.topEdgeView) {
-        rect = CGRectMake(CGRectGetMinX(self.initialRect),
-                          CGRectGetMinY(self.initialRect) + resizeControlView.translation.y,
-                          CGRectGetWidth(self.initialRect),
-                          CGRectGetHeight(self.initialRect) - resizeControlView.translation.y);
-        
-        if (self.keepingAspectRatio) {
-            rect = [self constrainedRectWithRectBasisOfHeight:rect aspectRatio:self.fixedAspectRatio];
-        }
-    } else if (resizeControlView == self.leftEdgeView) {
-        rect = CGRectMake(CGRectGetMinX(self.initialRect) + resizeControlView.translation.x,
-                          CGRectGetMinY(self.initialRect),
-                          CGRectGetWidth(self.initialRect) - resizeControlView.translation.x,
-                          CGRectGetHeight(self.initialRect));
-        
-        if (self.keepingAspectRatio) {
-            rect = [self constrainedRectWithRectBasisOfWidth:rect aspectRatio:self.fixedAspectRatio];
-        }
-    } else if (resizeControlView == self.bottomEdgeView) {
-        rect = CGRectMake(CGRectGetMinX(self.initialRect),
-                          CGRectGetMinY(self.initialRect),
-                          CGRectGetWidth(self.initialRect),
-                          CGRectGetHeight(self.initialRect) + resizeControlView.translation.y);
-        
-        if (self.keepingAspectRatio) {
-            rect = [self constrainedRectWithRectBasisOfHeight:rect aspectRatio:self.fixedAspectRatio];
-        }
-    } else if (resizeControlView == self.rightEdgeView) {
-        rect = CGRectMake(CGRectGetMinX(self.initialRect),
-                          CGRectGetMinY(self.initialRect),
-                          CGRectGetWidth(self.initialRect) + resizeControlView.translation.x,
-                          CGRectGetHeight(self.initialRect));
-        
-        if (self.keepingAspectRatio) {
-            rect = [self constrainedRectWithRectBasisOfWidth:rect aspectRatio:self.fixedAspectRatio];
-        }
-    } else if (resizeControlView == self.topLeftCornerView) {
-        rect = CGRectMake(CGRectGetMinX(self.initialRect) + resizeControlView.translation.x,
-                          CGRectGetMinY(self.initialRect) + resizeControlView.translation.y,
-                          CGRectGetWidth(self.initialRect) - resizeControlView.translation.x,
-                          CGRectGetHeight(self.initialRect) - resizeControlView.translation.y);
-        
-        if (self.keepingAspectRatio) {
-            CGRect constrainedRect;
-            if (fabsf(resizeControlView.translation.x) < fabsf(resizeControlView.translation.y)) {
-                constrainedRect = [self constrainedRectWithRectBasisOfHeight:rect aspectRatio:self.fixedAspectRatio];
-            } else {
-                constrainedRect = [self constrainedRectWithRectBasisOfWidth:rect aspectRatio:self.fixedAspectRatio];
-            }
-            constrainedRect.origin.x -= CGRectGetWidth(constrainedRect) - CGRectGetWidth(rect);
-            constrainedRect.origin.y -= CGRectGetHeight(constrainedRect) - CGRectGetHeight(rect);
-            rect = constrainedRect;
-        }
-    } else if (resizeControlView == self.topRightCornerView) {
-        rect = CGRectMake(CGRectGetMinX(self.initialRect),
-                          CGRectGetMinY(self.initialRect) + resizeControlView.translation.y,
-                          CGRectGetWidth(self.initialRect) + resizeControlView.translation.x,
-                          CGRectGetHeight(self.initialRect) - resizeControlView.translation.y);
-        
-        if (self.keepingAspectRatio) {
-            if (fabsf(resizeControlView.translation.x) < fabsf(resizeControlView.translation.y)) {
-                rect = [self constrainedRectWithRectBasisOfHeight:rect aspectRatio:self.fixedAspectRatio];
-            } else {
-                rect = [self constrainedRectWithRectBasisOfWidth:rect aspectRatio:self.fixedAspectRatio];
-            }
-        }
-    } else if (resizeControlView == self.bottomLeftCornerView) {
-        rect = CGRectMake(CGRectGetMinX(self.initialRect) + resizeControlView.translation.x,
-                          CGRectGetMinY(self.initialRect),
-                          CGRectGetWidth(self.initialRect) - resizeControlView.translation.x,
-                          CGRectGetHeight(self.initialRect) + resizeControlView.translation.y);
-        
-        if (self.keepingAspectRatio) {
-            CGRect constrainedRect;
-            if (fabsf(resizeControlView.translation.x) < fabsf(resizeControlView.translation.y)) {
-                constrainedRect = [self constrainedRectWithRectBasisOfHeight:rect aspectRatio:self.fixedAspectRatio];
-            } else {
-                constrainedRect = [self constrainedRectWithRectBasisOfWidth:rect aspectRatio:self.fixedAspectRatio];
-            }
-            constrainedRect.origin.x -= CGRectGetWidth(constrainedRect) - CGRectGetWidth(rect);
-            rect = constrainedRect;
-        }
-    } else if (resizeControlView == self.bottomRightCornerView) {
-        rect = CGRectMake(CGRectGetMinX(self.initialRect),
-                          CGRectGetMinY(self.initialRect),
-                          CGRectGetWidth(self.initialRect) + resizeControlView.translation.x,
-                          CGRectGetHeight(self.initialRect) + resizeControlView.translation.y);
-        
-        if (self.keepingAspectRatio) {
-            if (fabsf(resizeControlView.translation.x) < fabsf(resizeControlView.translation.y)) {
-                rect = [self constrainedRectWithRectBasisOfHeight:rect aspectRatio:self.fixedAspectRatio];
-            } else {
-                rect = [self constrainedRectWithRectBasisOfWidth:rect aspectRatio:self.fixedAspectRatio];
-            }
-        }
-    }
-
-    CGFloat minWidth = CGRectGetWidth(self.leftEdgeView.bounds) + CGRectGetWidth(self.rightEdgeView.bounds);
-    if (CGRectGetWidth(rect) < minWidth) {
-        rect.origin.x = CGRectGetMaxX(self.frame) - minWidth;
-        rect.size.width = minWidth;
-    }
-
-    CGFloat minHeight = CGRectGetHeight(self.topEdgeView.bounds) + CGRectGetHeight(self.bottomEdgeView.bounds);
-    if (CGRectGetHeight(rect) < minHeight) {
-        rect.origin.y = CGRectGetMaxY(self.frame) - minHeight;
-        rect.size.height = minHeight;
-    }
-
-    if (self.fixedAspectRatio) {
-        CGRect constrainedRect = rect;
-
-        if (CGRectGetWidth(rect) < minWidth) {
-            constrainedRect.size.width = rect.size.height * (minWidth / rect.size.width);
-        }
-
-        if (CGRectGetHeight(rect) < minHeight) {
-            constrainedRect.size.height = rect.size.width * (minHeight / rect.size.height);
-        }
-
-        rect = constrainedRect;
-    }
-    
-    return rect;
+- (void)landscapeMode {
+    [self.cropView resetCropRect];
+    self.cropView.cropAspectRatio = 3.0f / 2.0f;
 }
 
-- (CGRect)constrainedRectWithRectBasisOfWidth:(CGRect)rect aspectRatio:(CGFloat)aspectRatio
-{
-    CGFloat width = CGRectGetWidth(rect);
-    CGFloat height = CGRectGetHeight(rect);
-    if (width < height) {
-        height = width / self.fixedAspectRatio;
-    } else {
-        height = width * self.fixedAspectRatio;
-    }
-    rect.size = CGSizeMake(width, height);
+- (void)portraitMode {
+    [self.cropView resetCropRect];
+    self.cropView.cropAspectRatio = 2.0f / 3.0f;
     
-    return rect;
+    
+}
+-(void)originalMode {
+    [self.cropView resetCropRect];
 }
 
-- (CGRect)constrainedRectWithRectBasisOfHeight:(CGRect)rect aspectRatio:(CGFloat)aspectRatio
+#pragma mark -
+
+- (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex
 {
-    CGFloat width = CGRectGetWidth(rect);
-    CGFloat height = CGRectGetHeight(rect);
-    if (width < height) {
-        width = height * self.fixedAspectRatio;
-    } else {
-        width = height / self.fixedAspectRatio;
+    if (buttonIndex == 0) {
+        CGRect cropRect = self.cropView.cropRect;
+        CGSize size = self.cropView.image.size;
+        CGFloat width = size.width;
+        CGFloat height = size.height;
+        CGFloat ratio;
+        if (width < height) {
+            ratio = width / height;
+            cropRect.size = CGSizeMake(CGRectGetHeight(cropRect) * ratio, CGRectGetHeight(cropRect));
+        } else {
+            ratio = height / width;
+            cropRect.size = CGSizeMake(CGRectGetWidth(cropRect), CGRectGetWidth(cropRect) * ratio);
+        }
+        self.cropView.cropRect = cropRect;
+    } else if (buttonIndex == 1) {
+        self.cropView.cropAspectRatio = 1.0f;
+    } else if (buttonIndex == 2) {
+        self.cropView.cropAspectRatio = 2.0f / 3.0f;
+    } else if (buttonIndex == 3) {
+        self.cropView.cropAspectRatio = 3.0f / 5.0f;
+    } else if (buttonIndex == 4) {
+        CGFloat ratio = 3.0f / 4.0f;
+        CGRect cropRect = self.cropView.cropRect;
+        CGFloat width = CGRectGetWidth(cropRect);
+        cropRect.size = CGSizeMake(width, width * ratio);
+        self.cropView.cropRect = cropRect;
+    } else if (buttonIndex == 5) {
+        self.cropView.cropAspectRatio = 4.0f / 6.0f;
+    } else if (buttonIndex == 6) {
+        self.cropView.cropAspectRatio = 5.0f / 7.0f;
+    } else if (buttonIndex == 7) {
+        self.cropView.cropAspectRatio = 8.0f / 10.0f;
+    } else if (buttonIndex == 8) {
+        CGFloat ratio = 9.0f / 16.0f;
+        CGRect cropRect = self.cropView.cropRect;
+        CGFloat width = CGRectGetWidth(cropRect);
+        cropRect.size = CGSizeMake(width, width * ratio);
+        self.cropView.cropRect = cropRect;
     }
-    rect.size = CGSizeMake(width, height);
-    
-    return rect;
 }
 
 @end
