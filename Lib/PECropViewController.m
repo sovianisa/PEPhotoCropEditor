@@ -159,6 +159,12 @@
     }
 }
 
+-(void)setForceSquare:(BOOL)forceSquare{
+    
+    _forceSquare = forceSquare;
+    
+}
+
 #pragma mark -
 
 - (void)resizeControlViewDidBeginResizing:(PEResizeControl *)resizeControlView

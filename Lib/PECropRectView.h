@@ -15,6 +15,7 @@
 @property (nonatomic, weak) id<PECropRectViewDelegate> delegate;
 @property (nonatomic) BOOL showsGridMajor;
 @property (nonatomic) BOOL showsGridMinor;
+@property (nonatomic) BOOL forceSquare;
 
 @property (nonatomic) BOOL keepingAspectRatio;
 

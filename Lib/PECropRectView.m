@@ -65,6 +65,7 @@ static inline NSString *PELocalizedString(NSString *key, NSString *comment)
                                                                                            action:@selector(done:)];
     
     if (!self.toolbarItems) {
+        
         UIBarButtonItem *flexibleSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
                                                                                        target:nil
                                                                                        action:nil];
@@ -86,8 +87,12 @@ static inline NSString *PELocalizedString(NSString *key, NSString *comment)
         original.tintColor = [UIColor orangeColor];
         landscape.tintColor = [UIColor orangeColor];
         
-        
-        self.toolbarItems = @[landscape, flexibleSpace,original, flexibleSpace,portrait];
+        if (self.forceSquare == YES) {
+            self.toolbarHidden = YES;
+        } else {
+            self.toolbarItems = @[landscape, flexibleSpace,original, flexibleSpace,portrait];
+            self.toolbarHidden = NO;
+        }
         
         
     }
@@ -112,7 +117,12 @@ static inline NSString *PELocalizedString(NSString *key, NSString *comment)
     }
     
     self.keepingCropAspectRatio = self.keepingCropAspectRatio;
-    [self landscapeMode];
+    
+    if (self.forceSquare == YES) {
+        [self squareMode];
+    } else {
+        [self landscapeMode];
+    }
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
@@ -126,6 +136,13 @@ static inline NSString *PELocalizedString(NSString *key, NSString *comment)
 {
     _image = image;
     self.cropView.image = image;
+}
+
+
+-(void)setForceSquare:(BOOL)forceSquare{
+    
+    _forceSquare = forceSquare;
+    self.cropView.forceSquare =  self.forceSquare;
 }
 
 - (void)setKeepingCropAspectRatio:(BOOL)keepingCropAspectRatio
@@ -216,9 +233,12 @@ static inline NSString *PELocalizedString(NSString *key, NSString *comment)
 - (void)portraitMode {
     [self.cropView resetCropRect];
     self.cropView.cropAspectRatio = 2.0f / 3.0f;
-    
-    
 }
+
+- (void)squareMode {
+    [self.cropView resetCropRect];
+    self.cropView.cropAspectRatio = 1.0f;}
+
 -(void)originalMode {
     [self.cropView resetCropRect];
 }

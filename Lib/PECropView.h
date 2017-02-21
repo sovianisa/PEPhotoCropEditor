@@ -20,6 +20,7 @@
 
 @property (nonatomic) BOOL keepingCropAspectRatio;
 @property (nonatomic) CGFloat cropAspectRatio;
+@property (nonatomic) BOOL forceSquare;
 
 @property (nonatomic) CGRect cropRect;
 @property (nonatomic) CGRect imageCropRect;

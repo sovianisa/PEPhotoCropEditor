@@ -221,6 +221,12 @@ static const CGFloat MarginRight = MarginLeft;
     self.cropRectView.keepingAspectRatio = self.keepingCropAspectRatio;
 }
 
+-(void)setForceSquare:(BOOL)forceSquare{
+    
+    _forceSquare = forceSquare;
+    self.cropRectView.forceSquare =  self.forceSquare;
+}
+
 - (void)setCropAspectRatio:(CGFloat)aspectRatio andCenter:(BOOL)center
 {
     CGRect cropRect = self.scrollView.frame;
