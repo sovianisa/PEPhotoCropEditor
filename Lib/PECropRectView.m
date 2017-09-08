@@ -121,7 +121,7 @@ static inline NSString *PELocalizedString(NSString *key, NSString *comment)
     if (self.forceSquare == YES) {
         [self squareMode];
     } else {
-        [self landscapeMode];
+        [self originalMode];
     }
 }
 
